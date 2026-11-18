@@ -4,11 +4,19 @@ Run an interactive Android desktop in a browser, share files over SMB, and host 
 
 Tested on a Samsung Galaxy S22 Ultra SM-S908U1 running Android 14. The installer checks for Android 14 and ARM64. Other models and firmware may differ because display capture and input use Android shell APIs.
 
-## Install from Windows
+## Install from Linux, macOS, or Windows
 
-1. Install [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell-on-windows), [Go 1.25 or newer](https://go.dev/dl/), a JDK, and the Android SDK with **Platform-Tools**, **SDK Platform 34**, and **Build-Tools 34.0.0**. Set `ANDROID_HOME` and `JAVA_HOME` if the installer needs help finding them. The tested build used JDK 11.
+1. Install [Go 1.25 or newer](https://go.dev/dl/), a JDK, and the [Android SDK](https://developer.android.com/tools) with **Platform-Tools**, **SDK Platform 34**, and **Build-Tools 34.0.0**. Set `ANDROID_HOME` and `JAVA_HOME` if the installer needs help finding them. The tested build used JDK 11. Use Bash and curl on Linux or macOS. Use [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell-on-windows) on Windows.
 2. On the phone, turn on **USB debugging** in **Developer options**. Connect by USB and approve the computer. Connect the phone and browser to the same trusted Wi-Fi network.
-3. From PowerShell 7 in this repository, run:
+3. From Bash on Linux or macOS, run:
+
+   ```bash
+   bash ./install.sh
+   ```
+
+   With multiple devices attached, pass `--serial YOUR_SERIAL` from `adb devices`. Use `--with-tile` for the optional Quick Settings tile, `--build-only` to compile without a phone, or `--no-start` to install without starting the services.
+
+   On Windows, run:
 
    ```powershell
    pwsh -File .\Install.ps1
@@ -58,14 +66,16 @@ The same script accepts `status`, `browser-off`, and `stop`. Reinstalling preser
 
 ## Optional Quick Settings tile
 
-Install with `-WithTile` to add a **DeX Browser** tile. The tile can toggle an already running desktop helper without enabling Wireless debugging. To start the desktop after a reboot without USB, pair the tile’s local controller once.
+Install with `--with-tile` in Bash or `-WithTile` in PowerShell to add a **DeX Browser** tile. The tile can toggle an already running desktop helper without enabling Wireless debugging. To start the desktop after a reboot without USB, pair the tile’s local controller once.
 
 1. Enable **Wireless debugging** on the phone and approve your trusted Wi-Fi network.
-2. Keep USB connected and run `pwsh -File .\Pair-Tile.ps1 -Serial YOUR_SERIAL`.
+2. Keep USB connected and run `bash ./pair-tile.sh --serial YOUR_SERIAL` on Linux or macOS, or `pwsh -File .\Pair-Tile.ps1 -Serial YOUR_SERIAL` on Windows.
 3. Follow its prompt to use the port and code from Android’s **Pair device with pairing code** dialog. Keep the dialog open during pairing.
 4. Tap **DeX Browser** to start or stop the desktop.
 
 The pairing script grants the tile permission to turn on Android Wireless debugging when its helper is unavailable. Android still controls trusted-network approval. The controller pairs locally and runs the fixed desktop start command. To revoke access, forget its pairing in Developer options, disable Wireless debugging, and uninstall `org.galaxylan.desktop` if you no longer need the tile.
+
+Use the same installer and keep its generated signing files under `.build` for tile upgrades. A new signing key requires uninstalling the old tile and pairing again.
 
 ## Dependencies
 
