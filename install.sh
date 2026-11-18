@@ -101,13 +101,28 @@ if [ "$with_tile" -eq 1 ]; then
         47ea035fa5ed57f6149a2b025bbbd4b21584c355c05d0400416804715e4c12de
     tile="$project/src/tile"
     package="$build/package"
-    mkdir -p "$package/lib/arm64-v8a" "$build/tile-classes"
+    generated="$build/generated-java"
+    assets="$build/apk-assets-bundle"
+    mkdir -p "$package/lib/arm64-v8a" "$build/tile-classes" "$generated" "$assets/licenses"
     cp "$cache/libadb.so" "$package/lib/arm64-v8a/"
-    javac --release 8 -cp "$sdk_jar" -d "$build/tile-classes" "$tile"/*.java
+    set -- dexbrowser web gosamba HeadlessDex.jar DexFrame.jar DexVideo.jar DexInput.jar lan-services.sh provision.sh welcome.html
+    (cd "$payload"; jar cfM "$assets/server.zip" "$@")
+    if command -v sha256sum >/dev/null; then
+        (cd "$payload"; sha256sum "$@" | sha256sum) | awk '{print $1}' > "$assets/payload-revision.txt"
+    else
+        (cd "$payload"; shasum -a 256 "$@" | shasum -a 256) | awk '{print $1}' > "$assets/payload-revision.txt"
+    fi
+    cp "$project/LICENSE" "$assets/licenses/Galaxy LAN Desktop.txt"
+    cp "$project"/third-party/*.txt "$assets/licenses/"
+    cp "$(go env GOROOT)/LICENSE" "$assets/licenses/Go.txt"
+    cp "$(go list -m -f '{{.Dir}}' golang.org/x/net)/LICENSE" "$assets/licenses/Go x_net.txt"
+    "$build_tools/aapt2" compile --dir "$tile/res" -o "$build/res.zip"
+    "$build_tools/aapt2" link -I "$sdk_jar" --manifest "$tile/AndroidManifest.xml" -A "$assets" -0 zip \
+        --java "$generated" -o "$build/unsigned.apk" "$build/res.zip"
+    javac --release 11 -encoding UTF-8 -cp "$sdk_jar" -d "$build/tile-classes" \
+        "$tile"/*.java "$generated/org/galaxylan/desktop/R.java"
     jar cf "$build/tile-classes.jar" -C "$build/tile-classes" .
     "$build_tools/d8" --min-api 34 --lib "$sdk_jar" --output "$package" "$build/tile-classes.jar"
-    "$build_tools/aapt2" compile --dir "$tile/res" -o "$build/res.zip"
-    "$build_tools/aapt2" link -I "$sdk_jar" --manifest "$tile/AndroidManifest.xml" -o "$build/unsigned.apk" "$build/res.zip"
     (
         cd "$package"
         "$build_tools/aapt" add "$build/unsigned.apk" classes.dex lib/arm64-v8a/libadb.so

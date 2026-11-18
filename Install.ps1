@@ -83,14 +83,32 @@ if ($WithTile) {
     $tile = Join-Path $project 'src\tile'
     $package = Join-Path $build 'package'
     $tileClasses = Join-Path $build 'tile-classes'
-    New-Item -Path "$package\lib\arm64-v8a",$tileClasses -ItemType Directory -Force | Out-Null
+    $assets = Join-Path $build 'apk-assets-bundle'
+    $generated = Join-Path $build 'generated-java'
+    New-Item -Path "$package\lib\arm64-v8a",$tileClasses,$generated,"$assets\licenses" -ItemType Directory -Force | Out-Null
     Copy-Item $upstream "$package\lib\arm64-v8a\libadb.so" -Force
-    $javaFiles = @(Get-ChildItem $tile -Filter '*.java' | ForEach-Object FullName)
-    Invoke-Native $javac (@('--release','8','-cp',$sdkJar,'-d',$tileClasses) + $javaFiles)
+    $files = @('dexbrowser','web','gosamba','HeadlessDex.jar','DexFrame.jar','DexVideo.jar','DexInput.jar','lan-services.sh','provision.sh','welcome.html')
+    $hashes = foreach ($file in $files) {
+        (Get-FileHash "$payload\$file").Hash.ToLowerInvariant()
+    }
+    Push-Location $payload
+    try { Invoke-Native $jar (@('cfM',"$assets\server.zip") + $files) } finally { Pop-Location }
+    $hashFile = "$build\payload-hashes.txt"
+    [IO.File]::WriteAllText($hashFile, ($hashes -join "`n"))
+    (Get-FileHash $hashFile).Hash.ToLowerInvariant() | Set-Content "$assets\payload-revision.txt"
+    Copy-Item "$project\LICENSE" "$assets\licenses\Galaxy LAN Desktop.txt" -Force
+    Copy-Item "$project\third-party\*.txt" "$assets\licenses" -Force
+    $goRoot = (Invoke-Native $go @('env','GOROOT')).Trim()
+    Copy-Item "$goRoot\LICENSE" "$assets\licenses\Go.txt" -Force
+    Push-Location $project
+    try { $goNet = (Invoke-Native $go @('list','-m','-f','{{.Dir}}','golang.org/x/net')).Trim() } finally { Pop-Location }
+    Copy-Item "$goNet\LICENSE" "$assets\licenses\Go x_net.txt" -Force
+    Invoke-Native "$buildTools\aapt2.exe" @('compile','--dir',"$tile\res",'-o',"$build\res.zip")
+    Invoke-Native "$buildTools\aapt2.exe" @('link','-I',$sdkJar,'--manifest',"$tile\AndroidManifest.xml",'-A',$assets,'-0','zip','--java',$generated,'-o',"$build\unsigned.apk","$build\res.zip")
+    $javaFiles = @(Get-ChildItem $tile,$generated -Recurse -Filter '*.java' | ForEach-Object FullName)
+    Invoke-Native $javac (@('--release','11','-encoding','UTF-8','-cp',$sdkJar,'-d',$tileClasses) + $javaFiles)
     Invoke-Native $jar @('cf',"$build\tile-classes.jar",'-C',$tileClasses,'.')
     Invoke-Native $d8 @('--min-api','34','--lib',$sdkJar,'--output',$package,"$build\tile-classes.jar")
-    Invoke-Native "$buildTools\aapt2.exe" @('compile','--dir',"$tile\res",'-o',"$build\res.zip")
-    Invoke-Native "$buildTools\aapt2.exe" @('link','-I',$sdkJar,'--manifest',"$tile\AndroidManifest.xml",'-o',"$build\unsigned.apk","$build\res.zip")
     Push-Location $package
     try {
         Invoke-Native "$buildTools\aapt.exe" @('add',"$build\unsigned.apk",'classes.dex','lib/arm64-v8a/libadb.so')

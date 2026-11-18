@@ -4,9 +4,15 @@ Turn a spare Samsung phone into a desktop you can open in a browser on your LAN.
 
 ![Galaxy LAN Desktop in a desktop browser, with Android apps and the Utilities, Pause, and Full screen controls](docs/screenshots/desktop.png)
 
-[Quick start](#quick-start) · [Using the desktop](#using-the-desktop) · [Quick Settings tile](#quick-settings-tile)
+[Install the APK](docs/phone-setup.md) · [Install with USB scripts](#quick-start) · [Using the desktop](#using-the-desktop)
 
 **Tested on** Galaxy S22 Ultra (SM-S908U1), Android 14. The installer requires Android 14 and ARM64. Display and input behavior may vary on other models or firmware.
+
+## Install on the phone
+
+Download the signed APK from [GitHub Releases](https://github.com/IAmStoxe/galaxy-lan-desktop/releases), then follow the [setup guide with screenshots](docs/phone-setup.md). Pair the app once through Android Wireless debugging. The dashboard switches the browser desktop, SMB share, and web server on or off independently and shows the address for each running service.
+
+The APK bundles the desktop and server binaries. The USB installers below remain available for building from source or automating setup.
 
 ## Quick start
 
@@ -84,7 +90,7 @@ adb push ./index.html /data/local/tmp/galaxy-lan-desktop/www/index.html
 
 ## Quick Settings tile
 
-Install with `--with-tile` or `-WithTile`. Tap **DeX Browser** in Quick Settings to toggle the desktop. To start it from the tile after a reboot without USB, pair the tile’s local controller once.
+In the phone app, tap **Add DeX Browser tile**. USB installers can also add it with `--with-tile` or `-WithTile`. Tap **DeX Browser** in Quick Settings to toggle the desktop. To start it from the tile after a reboot without USB, pair the tile’s local controller once. APK users can follow the [phone setup guide](docs/phone-setup.md) for pairing.
 
 1. Enable **Wireless debugging** and approve your trusted Wi-Fi network.
 2. With USB connected, run `bash ./pair-tile.sh --serial YOUR_SERIAL` or `pwsh -File .\Pair-Tile.ps1 -Serial YOUR_SERIAL`.
@@ -105,4 +111,4 @@ The script also accepts `status`, `browser-off`, and `stop`. Reinstalling keeps 
 
 ## Dependencies
 
-The installer downloads [GoSamba v1.3.8](https://github.com/ahmetozer/gosamba/releases/tag/v1.3.8) and, for the optional tile, the ARM64 ADB binary from [LADB](https://github.com/tytydraco/LADB/tree/60f48029cf9d8e0bc848ca41a7bd76694d4ab796). It verifies pinned SHA-256 hashes and caches the downloads under `.build`. Their upstream licenses apply. The repository itself is [MIT-licensed](LICENSE).
+The source installer downloads [GoSamba v1.3.8](https://github.com/ahmetozer/gosamba/releases/tag/v1.3.8) and, for the phone app and tile, the ARM64 ADB binary from [LADB](https://github.com/tytydraco/LADB/tree/60f48029cf9d8e0bc848ca41a7bd76694d4ab796). It verifies pinned SHA-256 hashes and caches the downloads under `.build`. The APK includes their license notices, which are also visible from **Open-source licenses**. The repository itself is [MIT-licensed](LICENSE).
