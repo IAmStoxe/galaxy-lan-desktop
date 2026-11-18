@@ -1,6 +1,7 @@
 import android.graphics.Bitmap;
 import android.hardware.HardwareBuffer;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Pair;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
@@ -19,7 +20,9 @@ public final class DexFrame {
                 int.class, Class.forName(api + "$CaptureArgs"), Class.forName(api + "$ScreenCaptureListener"));
         Method listener = Class.forName(api).getMethod("createSyncCaptureListener");
         DataOutputStream output = new DataOutputStream(System.out);
+        ByteArrayOutputStream jpeg = new ByteArrayOutputStream();
         while (true) {
+            long nextCapture = SystemClock.uptimeMillis() + 50;
             Object sync = listener.invoke(null);
             boolean pair = sync instanceof Pair;
             Object callback = pair ? ((Pair<?, ?>) sync).first : sync;
@@ -31,7 +34,7 @@ public final class DexFrame {
                 Bitmap hardware = (Bitmap) shot.getClass().getMethod("asBitmap").invoke(shot);
                 Bitmap image = hardware.copy(Bitmap.Config.ARGB_8888, false);
                 hardware.recycle();
-                ByteArrayOutputStream jpeg = new ByteArrayOutputStream();
+                jpeg.reset();
                 image.compress(Bitmap.CompressFormat.JPEG, 75, jpeg);
                 image.recycle();
                 output.writeInt(jpeg.size());
@@ -39,7 +42,8 @@ public final class DexFrame {
                 output.flush();
             }
             if (args.length > 1) return;
-            Thread.sleep(220);
+            long remaining = nextCapture - SystemClock.uptimeMillis();
+            if (remaining > 0) Thread.sleep(remaining);
         }
     }
 }

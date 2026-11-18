@@ -56,12 +56,75 @@ async function avc(signal,session){
   }
  }finally{await reader.cancel().catch(()=>{});if(decoder.state!=='closed')decoder.close()}
 }
+async function jpegStream(signal, session) {
+ const res = await fetch('/screen?format=framed', {signal});
+ if (!res.ok) throw Error('JPEG stream unavailable');
+ const reader = res.body.getReader();
+ const ctx = canvas.getContext('2d', {alpha:false});
+ const header = new Uint8Array(4);
+ let headerSize = 0, size = 0, frame = null, latest = null;
+ let painting = false, decodeError = null, closed = false;
+ async function paint() {
+  painting = true;
+  try {
+   while (latest && !closed && !signal.aborted) {
+    const jpeg = latest;
+    latest = null;
+    const bitmap = await createImageBitmap(new Blob([jpeg], {type:'image/jpeg'}));
+    try {
+     if (!closed && epoch === session) {
+      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      canvas.hidden = false;
+      statusEl.textContent = 'Compatibility view';
+     }
+    } finally { bitmap.close(); }
+   }
+  } catch (error) {
+   decodeError = error;
+   reader.cancel().catch(() => {});
+  } finally { painting = false; }
+ }
+ try {
+  while (!signal.aborted) {
+   const {value, done} = await reader.read();
+   if (decodeError) throw decodeError;
+   if (done) throw Error('JPEG stream ended');
+   for (let cursor = 0; cursor < value.length;) {
+    if (!frame) {
+     const count = Math.min(4 - headerSize, value.length - cursor);
+     header.set(value.subarray(cursor, cursor + count), headerSize);
+     cursor += count;
+     headerSize += count;
+     if (headerSize < 4) continue;
+     const length = new DataView(header.buffer).getUint32(0);
+     if (!length || length > 12 * 1024 * 1024) throw Error('Invalid JPEG frame');
+     frame = new Uint8Array(length);
+     headerSize = 0;
+    }
+    const count = Math.min(frame.length - size, value.length - cursor);
+    frame.set(value.subarray(cursor, cursor + count), size);
+    cursor += count;
+    size += count;
+    if (size === frame.length) {
+     latest = frame;
+     frame = null;
+     size = 0;
+    }
+   }
+   if (latest && !painting) void paint();
+  }
+ } finally {
+  closed = true;
+  await reader.cancel().catch(() => {});
+ }
+}
 async function connect(){
  pause('Connecting…');const session=epoch;controller=new AbortController();const signal=controller.signal;
  try{
   const res=await fetch('/display',{signal});if(!res.ok)throw Error('Desktop unavailable');
   const id=await res.text();if(epoch!==session)return;display=id;channel(id);toggle.textContent='Pause';screenEl.focus();
   if(window.VideoDecoder){try{await avc(signal,session)}catch(e){if(signal.aborted)return}}
+  if(window.createImageBitmap){try{await jpegStream(signal,session)}catch(e){if(signal.aborted)return}}
   if(epoch!==session)return;canvas.hidden=true;img.hidden=false;img.src='/screen?t='+Date.now();statusEl.textContent='Compatibility view';
  }catch(e){if(epoch===session)pause('Desktop unavailable')}
 }

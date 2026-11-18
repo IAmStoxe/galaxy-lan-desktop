@@ -29,7 +29,8 @@ public final class DexVideo {
         format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
         format.setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0);
         format.setInteger(MediaFormat.KEY_PRIORITY, 0);
-        format.setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 250000);
+        // Keep the encoder advancing when the desktop is otherwise static.
+        format.setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 50_000);
         MediaCodec encoder = MediaCodec.createEncoderByType("video/avc");
         encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
         Surface surface = encoder.createInputSurface();

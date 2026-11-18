@@ -61,7 +61,13 @@ func stream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { cancel(); cmd.Wait() }()
-	w.Header().Set("Content-Type", "multipart/x-mixed-replace; boundary=dexframe")
+	framed := r.URL.Query().Get("format") == "framed"
+	if framed {
+		w.Header().Set("Content-Type", "application/octet-stream")
+	} else {
+		w.Header().Set("Content-Type", "multipart/x-mixed-replace; boundary=dexframe")
+	}
+	rc := http.NewResponseController(w)
 	for {
 		var n uint32
 		if binary.Read(pipe, binary.BigEndian, &n) != nil || n == 0 || n > 12<<20 {
@@ -74,20 +80,28 @@ func stream(w http.ResponseWriter, r *http.Request) {
 		if _, err := jpeg.DecodeConfig(bytes.NewReader(b)); err != nil {
 			return
 		}
-		rc := http.NewResponseController(w)
 		rc.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		if _, err := fmt.Fprintf(w, "--dexframe\r\nContent-Type: image/jpeg\r\nContent-Length: %d\r\n\r\n", n); err != nil {
-			return
+		if framed {
+			if err := binary.Write(w, binary.BigEndian, n); err != nil {
+				return
+			}
+		} else {
+			if _, err := fmt.Fprintf(w, "--dexframe\r\nContent-Type: image/jpeg\r\nContent-Length: %d\r\n\r\n", n); err != nil {
+				return
+			}
 		}
 		if _, err := w.Write(b); err != nil {
 			return
 		}
-		if _, err := io.WriteString(w, "\r\n"); err != nil {
-			return
+		if !framed {
+			if _, err := io.WriteString(w, "\r\n"); err != nil {
+				return
+			}
 		}
 		if rc.Flush() != nil {
 			return
 		}
+		rc.SetWriteDeadline(time.Time{})
 	}
 }
 
