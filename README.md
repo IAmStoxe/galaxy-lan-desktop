@@ -1,82 +1,108 @@
 # Galaxy LAN Desktop
 
-Run an interactive Android desktop in a browser, share files over SMB, and host static files from a Samsung phone on your LAN. The desktop uses a virtual display with Samsung’s secondary launcher on the tested device. It works without a TV or root.
+Turn a spare Samsung phone into a desktop you can open in a browser on your LAN. Use your keyboard and mouse to run Android apps, or open **Utilities** to share files over SMB and host a static website. No root, TV, or HDMI adapter required.
 
-Tested on a Samsung Galaxy S22 Ultra SM-S908U1 running Android 14. The installer checks for Android 14 and ARM64. Other models and firmware may differ because display capture and input use Android shell APIs.
+![Galaxy LAN Desktop in a desktop browser, with Android apps and the Utilities, Pause, and Full screen controls](docs/screenshots/desktop.png)
 
-## Install from Linux, macOS, or Windows
+[Quick start](#quick-start) · [Using the desktop](#using-the-desktop) · [Quick Settings tile](#quick-settings-tile)
 
-1. Install [Go 1.25 or newer](https://go.dev/dl/), a JDK, and the [Android SDK](https://developer.android.com/tools) with **Platform-Tools**, **SDK Platform 34**, and **Build-Tools 34.0.0**. Set `ANDROID_HOME` and `JAVA_HOME` if the installer needs help finding them. The tested build used JDK 11. Use Bash and curl on Linux or macOS. Use [PowerShell 7](https://learn.microsoft.com/powershell/scripting/install/installing-powershell-on-windows) on Windows.
-2. On the phone, turn on **USB debugging** in **Developer options**. Connect by USB and approve the computer. Connect the phone and browser to the same trusted Wi-Fi network.
-3. From Bash on Linux or macOS, run:
+**Tested on** Galaxy S22 Ultra (SM-S908U1), Android 14. The installer requires Android 14 and ARM64. Display and input behavior may vary on other models or firmware.
+
+## Quick start
+
+1. Install **Go 1.25+**, a **JDK** (tested with JDK 11), and the Android SDK with **Platform-Tools**, **SDK Platform 34**, and **Build-Tools 34.0.0**. Set `ANDROID_HOME` and `JAVA_HOME` if they aren’t detected.
+2. Enable **USB debugging** under the phone’s **Developer options**, connect it by USB, and approve the computer. Put the phone and the computer you’ll use to view it on the same trusted Wi-Fi network.
+3. From the repository directory, run the installer for your OS.
+
+   **Linux / macOS** with Bash and curl
 
    ```bash
    bash ./install.sh
    ```
 
-   With multiple devices attached, pass `--serial YOUR_SERIAL` from `adb devices`. Use `--with-tile` for the optional Quick Settings tile, `--build-only` to compile without a phone, or `--no-start` to install without starting the services.
-
-   On Windows, run:
+   **Windows** with PowerShell 7
 
    ```powershell
    pwsh -File .\Install.ps1
    ```
 
-   With several devices connected, pass `-Serial YOUR_SERIAL` using the serial shown by `adb devices`. Use `-BuildOnly` to compile without a connected phone or `-NoStart` to install without starting any services. The installer prints the current LAN addresses.
+4. Open the HTTPS address printed by the installer. Sign in as `dex` with the password generated on the phone.
 
-## Use the desktop and shares
+   ```sh
+   adb shell cat /data/local/tmp/galaxy-lan-desktop/dex-password
+   ```
 
-| Service | Address | Access |
+If ADB sees more than one device, use `adb devices` to find the right serial. Pass `--serial YOUR_SERIAL` (Bash) or `-Serial YOUR_SERIAL` (PowerShell), and add `-s YOUR_SERIAL` to the ADB commands below.
+
+<details>
+<summary>Browser certificate and installer flags</summary>
+
+The desktop serves HTTPS with a self-signed certificate. Verify its SHA-256 fingerprint against the certificate pulled over USB before trusting it.
+
+```sh
+adb pull /data/local/tmp/galaxy-lan-desktop/dex-cert.pem
+openssl x509 -in dex-cert.pem -noout -sha256 -fingerprint
+```
+
+On Windows, you can use `certutil -decode dex-cert.pem dex-cert.cer` followed by `certutil -hashfile dex-cert.cer SHA256`.
+
+| What you want | Bash | PowerShell |
 | --- | --- | --- |
-| Desktop and Utilities | `https://PHONE_IP:8443/` | User `dex` and the generated browser password |
-| SMB share | `smb://PHONE_IP:4450/Files` | User `files` and a separate generated SMB password |
-| Static website | `http://PHONE_IP:8080/` | Any client on the LAN can read files in the dedicated `www` directory |
+| Install the Quick Settings tile | `--with-tile` | `-WithTile` |
+| Build without connecting a phone | `--build-only` | `-BuildOnly` |
+| Install without starting services | `--no-start` | `-NoStart` |
 
-Retrieve each password over USB with the Android SDK’s `adb`. Add `-s YOUR_SERIAL` before `shell` if needed.
+</details>
 
-```powershell
-adb shell cat /data/local/tmp/galaxy-lan-desktop/dex-password
+## Using the desktop
+
+Click inside the desktop to send keyboard and mouse input to the phone. Use **Full screen** when you want the whole monitor. **Pause** stops streaming to the current browser tab. The Quick Settings tile turns the desktop service off for everyone.
+
+### Files and services
+
+Open **Utilities** from the desktop toolbar. The panel can start or stop SMB and the web server independently. You can create folders and upload or download files without leaving the browser. Browser uploads are limited to 64 MiB per file.
+
+![Utilities in a desktop browser, showing the running services and an example SMB folder](docs/screenshots/utilities.png)
+
+| Service | LAN address | Access |
+| --- | --- | --- |
+| Desktop and Utilities | `https://PHONE_IP:8443/` | `dex` with the generated desktop password |
+| SMB Files share | `smb://PHONE_IP:4450/Files` | `files` with its own generated password |
+| Static website | `http://PHONE_IP:8080/` | Read access for devices on the LAN |
+
+Use an SMB client that supports custom TCP ports and SMB signing and encryption. The share lives in the phone’s `GalaxyLANShare` folder.
+
+```sh
 adb shell cat /data/local/tmp/galaxy-lan-desktop/smb-password
 ```
 
-The desktop uses a per-phone self-signed certificate. Compare the browser’s certificate fingerprint with the certificate pulled over USB before trusting it.
+To host a page, put it in the dedicated web directory. Other devices on the LAN can read files you put there.
 
-```powershell
-adb pull /data/local/tmp/galaxy-lan-desktop/dex-cert.pem
-certutil -decode dex-cert.pem dex-cert.cer
-certutil -hashfile dex-cert.cer SHA256
+```sh
+adb push ./index.html /data/local/tmp/galaxy-lan-desktop/www/index.html
 ```
 
-Open **Utilities** on the desktop to start or stop the web and SMB services, browse the share, create folders, or upload and download files. The SMB server requires SMB signing and encryption. Use an SMB client that supports a custom TCP port. Share data lives in `GalaxyLANShare` on the phone. Browser uploads support up to 64 MiB per file.
+## Quick Settings tile
 
-Push site files to `/data/local/tmp/galaxy-lan-desktop/www/`. Add the device serial where needed.
+Install with `--with-tile` or `-WithTile`. Tap **DeX Browser** in Quick Settings to toggle the desktop. To start it from the tile after a reboot without USB, pair the tile’s local controller once.
 
-```powershell
-adb push .\index.html /data/local/tmp/galaxy-lan-desktop/www/index.html
-```
+1. Enable **Wireless debugging** and approve your trusted Wi-Fi network.
+2. With USB connected, run `bash ./pair-tile.sh --serial YOUR_SERIAL` or `pwsh -File .\Pair-Tile.ps1 -Serial YOUR_SERIAL`.
+3. Open **Pair device with pairing code** on the phone. Keep that dialog open while you enter its port and six-digit code at the script’s prompts.
 
-Run the following after reboot or an IP address change. If a process is already running on the old address, run `stop` first. The desktop can also be launched from the optional tile.
+Pairing allows the tile to enable Wireless debugging when its helper is unavailable. To revoke access, forget its pairing in Developer options and disable Wireless debugging. Keep the generated signing files under `.build` and use the same installer for tile upgrades. A new key requires uninstalling the old tile and pairing again.
 
-```powershell
+## Restart the services
+
+After a phone reboot, start the web and SMB services over USB. Start the desktop with the tile or the second command below. If the phone changed IP addresses while services were running, use `stop` before restarting.
+
+```sh
 adb shell sh /data/local/tmp/galaxy-lan-desktop/lan-services.sh start
 adb shell sh /data/local/tmp/galaxy-lan-desktop/lan-services.sh browser-on
 ```
 
-The same script accepts `status`, `browser-off`, and `stop`. Reinstalling preserves the site files, share contents, and generated credentials.
-
-## Optional Quick Settings tile
-
-Install with `--with-tile` in Bash or `-WithTile` in PowerShell to add a **DeX Browser** tile. The tile can toggle an already running desktop helper without enabling Wireless debugging. To start the desktop after a reboot without USB, pair the tile’s local controller once.
-
-1. Enable **Wireless debugging** on the phone and approve your trusted Wi-Fi network.
-2. Keep USB connected and run `bash ./pair-tile.sh --serial YOUR_SERIAL` on Linux or macOS, or `pwsh -File .\Pair-Tile.ps1 -Serial YOUR_SERIAL` on Windows.
-3. Follow its prompt to use the port and code from Android’s **Pair device with pairing code** dialog. Keep the dialog open during pairing.
-4. Tap **DeX Browser** to start or stop the desktop.
-
-The pairing script grants the tile permission to turn on Android Wireless debugging when its helper is unavailable. Android still controls trusted-network approval. The controller pairs locally and runs the fixed desktop start command. To revoke access, forget its pairing in Developer options, disable Wireless debugging, and uninstall `org.galaxylan.desktop` if you no longer need the tile.
-
-Use the same installer and keep its generated signing files under `.build` for tile upgrades. A new signing key requires uninstalling the old tile and pairing again.
+The script also accepts `status`, `browser-off`, and `stop`. Reinstalling keeps the website, share contents, and generated credentials.
 
 ## Dependencies
 
-The installer downloads [GoSamba v1.3.8](https://github.com/ahmetozer/gosamba/releases/tag/v1.3.8) and, for the optional tile, the ARM64 ADB binary from [LADB](https://github.com/tytydraco/LADB/tree/60f48029cf9d8e0bc848ca41a7bd76694d4ab796). It verifies pinned SHA-256 hashes and keeps both downloads in the ignored `.build` directory. Upstream licenses apply to those downloads. Neither binary is distributed in this repository.
+The installer downloads [GoSamba v1.3.8](https://github.com/ahmetozer/gosamba/releases/tag/v1.3.8) and, for the optional tile, the ARM64 ADB binary from [LADB](https://github.com/tytydraco/LADB/tree/60f48029cf9d8e0bc848ca41a7bd76694d4ab796). It verifies pinned SHA-256 hashes and caches the downloads under `.build`. Their upstream licenses apply. The repository itself is [MIT-licensed](LICENSE).
