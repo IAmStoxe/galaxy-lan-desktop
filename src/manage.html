@@ -1,0 +1,30 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Galaxy utilities</title>
+<style>
+:root{color-scheme:dark;font:15px Inter,system-ui,sans-serif;background:#11151b;color:#e9eff7}body{max-width:900px;margin:0 auto;padding:28px}a{color:#9dd1ff}h1{font-size:26px}h2{font-size:17px}section{border:1px solid #374351;background:#1b222c;padding:18px;border-radius:10px;margin:12px 0}button,input{font:inherit;padding:6px 9px;margin:3px;border:1px solid #536375;border-radius:5px;background:#242f3d;color:inherit}button{cursor:pointer}p{color:#bfcbd8}li{padding:4px;overflow-wrap:anywhere}#message{min-height:1.4em}
+</style>
+<a href="/">← Desktop</a><h1>Galaxy utilities</h1><p id="message" role="status"></p>
+<section><h2>Services</h2><p>SMB <output id="smb"></output> <button data-action="smb-start">Start</button><button data-action="smb-stop">Stop</button></p>
+<p>Web <output id="web"></output> <button data-action="web-start">Start</button><button data-action="web-stop">Stop</button> <a id="web-link">Open website</a></p><button id="refresh">Refresh</button></section>
+<section><h2>SMB files</h2><p>TCP port 4450 · Share <strong>Files</strong> · User <strong>files</strong></p><p><code id="smb-loc"></code> <button id="copy">Copy address</button></p>
+<p><button id="up">Up</button> <strong id="directory"></strong></p>
+<form id="folder"><input name="folder" required maxlength="255" placeholder="Folder name" aria-label="Folder name"><button>Create folder</button></form>
+<form id="upload"><input type="file" required aria-label="File to upload"><button>Upload</button></form>
+<ul id="files"></ul></section>
+<script>
+const el=id=>document.getElementById(id);
+const smb='smb://'+location.hostname+':4450/Files';
+el('smb-loc').textContent=smb;el('web-link').href='http://'+location.hostname+':8080/';
+let dir='.';
+async function req(url,opts){const r=await fetch(url,opts);if(!r.ok)throw Error((await r.text()).trim());return r;}
+async function run(fn){try{el('message').textContent='';await fn()}catch(e){el('message').textContent=e.message}}
+const post=body=>({method:'POST',headers:{'X-DeX-Control':'1'},body});
+async function status(action){const s=await (await req('/manage/services'+(action?'?action='+action:''),action?post():undefined)).json();el('web').textContent=s.web?'Running':'Stopped';el('smb').textContent=s.gosamba?'Running':'Stopped';for(const b of document.querySelectorAll('[data-action]')){const [service,verb]=b.dataset.action.split('-');b.disabled=Boolean(s[service==='smb'?'gosamba':'web'])===(verb==='start')}}
+const share=(options={})=>'/manage/share?'+new URLSearchParams({dir,...options});
+async function files(){const current=dir;const entries=await (await req(share())).json();if(current!==dir)return;el('files').replaceChildren();el('directory').textContent=current==='.'?'Files':current;el('up').disabled=current==='.';for(const f of entries){const item=document.createElement('li');const link=document.createElement(f.Folder?'button':'a');link.textContent=f.Name;if(f.Folder){link.onclick=()=>run(async()=>{dir=dir==='.'?f.Name:dir+'/'+f.Name;await files()})}else link.href=share({name:f.Name});item.append(link);el('files').append(item)}}
+el('copy').onclick=()=>run(async()=>{await navigator.clipboard.writeText(smb);el('message').textContent='Address copied'});
+el('up').onclick=()=>run(async()=>{dir=dir.split('/').slice(0,-1).join('/')||'.';await files()});
+el('folder').onsubmit=e=>{e.preventDefault();run(async()=>{const input=e.target.elements.folder;await req(share({action:'mkdir',name:input.value}),post());input.value='';await files()})};
+el('upload').onsubmit=e=>{e.preventDefault();run(async()=>{const input=e.target.querySelector('input');const f=input.files[0];if(f.size>64*1024*1024)throw Error('Upload limit is 64 MiB. Use SMB for larger files.');await req(share({action:'upload',name:f.name}),post(f));input.value='';await files()})};
+for(const b of document.querySelectorAll('[data-action]'))b.onclick=()=>run(()=>status(b.dataset.action));
+el('refresh').onclick=()=>run(()=>Promise.all([status(),files()]));el('refresh').click();
+</script></html>

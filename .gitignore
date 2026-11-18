@@ -1,0 +1,9 @@
+/.build/
+/dist/
+*.apk
+*.jks
+*.p12
+*.pem
+*.key
+*-password
+smb.toml

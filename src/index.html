@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Galaxy desktop</title>
+<style>
+:root{color-scheme:dark;font:14px Inter,system-ui,sans-serif;background:#101216;color:#e9eef5}
+*{box-sizing:border-box}body{margin:0;display:grid;grid-template-rows:40px minmax(0,1fr);height:100dvh}header{display:flex;gap:.8rem;align-items:center;padding:0 1rem;border-bottom:1px solid #343942}h1{font-size:.95rem;font-weight:600;margin:0 auto 0 0}#status{color:#b7bec8;font-size:.85rem}button{background:transparent;color:inherit;border:1px solid transparent;border-radius:.35rem;padding:.28rem .45rem;cursor:pointer}button:hover,button:focus-visible{background:#29313b;border-color:#526073}
+main{min-height:0;display:grid;place-items:center;background:#080a0d}#screen{position:relative;width:min(100%,calc((100dvh - 40px) * 1.77777778));aspect-ratio:16/9;touch-action:none;user-select:none;outline:none}
+canvas,img{position:absolute;inset:0;display:block;width:100%;height:100%}[hidden]{display:none!important}main:fullscreen #screen{width:min(100%,177.777778dvh)}
+</style>
+<header><h1>Galaxy desktop</h1><a style="color:#9dd1ff" href="/manage">Utilities</a><span id="status" role="status">Connecting…</span><button id="toggle">Pause</button><button id="full">Full screen</button></header>
+<main><div id="screen" role="application" aria-label="Galaxy desktop. Click to control. Escape goes back." tabindex="0"><canvas id="canvas" width="1920" height="1080"></canvas><img id="fallback" hidden alt="Live Galaxy desktop"></div></main>
+<script>
+const $=id=>document.getElementById(id);
+const screenEl=$('screen'), statusEl=$('status'), toggle=$('toggle'), img=$('fallback'), canvas=$('canvas');
+let display='',start=null,queue=Promise.resolve(),epoch=0,controller=null,socket=null,ready=false,dragging=false;
+const codes={Enter:66,Escape:4,Back:4,Tab:61,Backspace:67,Delete:112,ArrowUp:19,ArrowDown:20,ArrowLeft:21,ArrowRight:22,' ':62};
+function channel(id){
+ const ws=new WebSocket('wss://'+location.host+'/control?display='+encodeURIComponent(id));
+ socket=ws;ws.binaryType='arraybuffer';
+ ws.onmessage=e=>{if(ws===socket&&e.data==='ready')ready=true};
+ ws.onclose=()=>{if(ws===socket){ready=false;dragging=false}};
+}
+function eventPacket(kind,p={x:0,y:0},key=0){
+ if(!ready||socket?.readyState!==1)return false;
+ const b=new ArrayBuffer(7),v=new DataView(b);v.setUint8(0,kind);v.setUint16(1,Math.round(p.x*1919));v.setUint16(3,Math.round(p.y*1079));v.setUint16(5,key);
+ socket.send(b);return true;
+}
+function pause(message='Paused'){
+ if(dragging)eventPacket(3);dragging=false;ready=false;socket?.close();socket=null;
+ epoch++;controller?.abort();display='';start=null;img.removeAttribute('src');img.hidden=true;canvas.hidden=true;statusEl.textContent=message;toggle.textContent='Connect';
+}
+async function avc(signal,session){
+ const response=await fetch('/video',{signal});if(!response.ok)throw Error('Video unavailable');
+ const reader=response.body.getReader(),ctx=canvas.getContext('2d',{alpha:false});
+ let buffer=new Uint8Array(0),params=null,configured=false,needKey=true,decodeError=null;
+ const decoder=new VideoDecoder({output(frame){try{if(epoch===session){ctx.drawImage(frame,0,0);canvas.hidden=false;statusEl.textContent='Live';}}finally{frame.close()}},error(e){decodeError=e;reader.cancel()}});
+ try{
+  while(!signal.aborted){
+   const read=await reader.read();if(decodeError)throw decodeError;if(read.done)throw Error('Stream ended');
+   const next=new Uint8Array(buffer.length+read.value.length);next.set(buffer);next.set(read.value,buffer.length);buffer=next;
+   while(buffer.length>=16){
+    const meta=new DataView(buffer.buffer,buffer.byteOffset,16),length=meta.getUint32(0),flags=meta.getUint32(4),ts=Number(meta.getBigUint64(8));
+    if(!length||length>8*1024*1024)throw Error('Invalid video packet');if(buffer.length<length+16)break;
+    let data=buffer.subarray(16,length+16);buffer=buffer.subarray(16+length);
+    if(flags&2){
+     params=data.slice();const i=data.findIndex((v,i)=>i>=3 && (v&31)===7 && data[i-1]===1 && data[i-2]===0 && data[i-3]===0);
+     if(i<0||i+3>=data.length)throw Error('Invalid AVC format');
+     const codec='avc1.'+Array.from(data.subarray(i+1,i+4),v=>v.toString(16).padStart(2,'0')).join('');
+     decoder.configure({codec,optimizeForLatency:true});configured=true;continue;
+    }
+    const key=!!(flags&1);
+    if(decoder.decodeQueueSize>6)needKey=true;
+    if(!configured || (needKey&&!key))continue;
+    if(key&&params){const unit=new Uint8Array(params.length+data.length);unit.set(params);unit.set(data,params.length);data=unit;needKey=false;}
+    decoder.decode(new EncodedVideoChunk({type:key?'key':'delta',timestamp:ts,data}));
+   }
+  }
+ }finally{await reader.cancel().catch(()=>{});if(decoder.state!=='closed')decoder.close()}
+}
+async function connect(){
+ pause('Connecting…');const session=epoch;controller=new AbortController();const signal=controller.signal;
+ try{
+  const res=await fetch('/display',{signal});if(!res.ok)throw Error('Desktop unavailable');
+  const id=await res.text();if(epoch!==session)return;display=id;channel(id);toggle.textContent='Pause';screenEl.focus();
+  if(window.VideoDecoder){try{await avc(signal,session)}catch(e){if(signal.aborted)return}}
+  if(epoch!==session)return;canvas.hidden=true;img.hidden=false;img.src='/screen?t='+Date.now();statusEl.textContent='Compatibility view';
+ }catch(e){if(epoch===session)pause('Desktop unavailable')}
+}
+img.onerror=()=>{if(display&&!img.hidden)pause('Desktop unavailable')};
+function send(action){
+ const id=display,session=epoch;if(!id)return;
+ if(action.kind==='key' && (codes[action.key] || /^[!-~]$/.test(action.key)) && eventPacket(codes[action.key]?4:5,undefined,codes[action.key]||action.key.charCodeAt(0)))return;
+ queue=queue.then(async()=>{if(epoch!==session)return;const res=await fetch('/input',{method:'POST',headers:{'Content-Type':'application/json','X-DeX-Control':'1'},body:JSON.stringify({...action,display:id})});if(!res.ok)throw Error('Input unavailable')}).catch(e=>{statusEl.textContent=e.message});
+}
+function point(e){const r=screenEl.getBoundingClientRect(),clamp=v=>Math.min(1,Math.max(0,v));return {x:clamp((e.clientX-r.left)/r.width),y:clamp((e.clientY-r.top)/r.height)}}
+screenEl.onpointerdown=e=>{if(e.button!==0||!e.isPrimary||!display)return;screenEl.focus();start=point(e);dragging=eventPacket(0,start);screenEl.setPointerCapture(e.pointerId)};
+screenEl.onpointermove=e=>{if(!ready||!e.isPrimary||socket.bufferedAmount>=128)return;if(dragging)eventPacket(2,point(e));else if(e.pointerType==='mouse')eventPacket(7,point(e))};
+screenEl.onpointercancel=()=>{if(dragging)eventPacket(3);start=null;dragging=false};
+screenEl.onpointerup=e=>{if(!start||!e.isPrimary)return;const end=point(e);if(dragging){eventPacket(1,end);dragging=false}else{const kind=Math.hypot(end.x-start.x,end.y-start.y)>.008?'drag':'tap';send({kind,...start,endX:end.x,endY:end.y})}start=null};
+screenEl.oncontextmenu=e=>{e.preventDefault();send({kind:'key',key:'Back'})};
+screenEl.onkeydown=e=>{if(e.ctrlKey||e.metaKey||e.altKey||!display)return;if(e.key.length===1||['Enter','Escape','Tab','Backspace','Delete','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();send({kind:'key',key:e.key==='Escape'?'Back':e.key})}};
+let lastWheel=0;
+screenEl.onwheel=e=>{e.preventDefault();if(!e.deltaY)return;const p=point(e),amount=Math.max(1,Math.min(8,Math.round(Math.abs(e.deltaY)/(e.deltaMode===0?45:1))));if(eventPacket(6,p,8-Math.sign(e.deltaY)*amount))return;if(Date.now()-lastWheel<300)return;lastWheel=Date.now();send({kind:'drag',...p,endX:p.x,endY:Math.max(0,Math.min(1,p.y-Math.sign(e.deltaY)*.22))})};
+toggle.onclick=()=>display?pause():connect();
+$('full').onclick=()=>document.fullscreenElement?document.exitFullscreen():document.querySelector('main').requestFullscreen();
+connect();
+</script></html>
