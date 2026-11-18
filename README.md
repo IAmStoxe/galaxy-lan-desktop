@@ -2,7 +2,7 @@
 
 Turn a spare Samsung phone into a desktop you can open in a browser on your LAN. Use your keyboard and mouse to run Android apps, or open **Utilities** to share files over SMB and host a static website. No root, TV, or HDMI adapter required.
 
-![Galaxy LAN Desktop in a desktop browser, with Android apps and the Utilities, Pause, and Full screen controls](docs/screenshots/desktop.png)
+![Demo of Galaxy LAN Desktop in Chrome. The cursor moves an Android window, scrolls through Settings, and opens the SMB and web controls.](docs/screenshots/desktop-demo.gif)
 
 [Install the APK](docs/phone-setup.md) · [Install with USB scripts](#quick-start) · [Using the desktop](#using-the-desktop)
 
