@@ -4,7 +4,7 @@ Turn a spare Samsung phone into a desktop you can open in a browser on your LAN.
 
 ![Demo of Galaxy LAN Desktop in Chrome. The cursor moves an Android window, scrolls through Settings, and opens the SMB and web controls.](docs/screenshots/desktop-demo.gif)
 
-[Install the APK](docs/phone-setup.md) · [Install with USB scripts](#quick-start) · [Using the desktop](#using-the-desktop)
+[Install the APK](docs/phone-setup.md) · [Install with USB scripts](#quick-start) · [Using the desktop](#using-the-desktop) · [How it works](docs/how-it-works/README.md)
 
 **Tested on** Galaxy S22 Ultra (SM-S908U1), Android 14. The installer requires Android 14 and ARM64. Display and input behavior may vary on other models or firmware.
 
